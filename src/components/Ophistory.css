@@ -1,0 +1,251 @@
+/* Ophistory.css */
+
+.background {
+  min-height: 100vh;
+  background-image: url('https://media.istockphoto.com/id/868644242/photo/close-up-of-stethoscope-and-doctor.jpg?s=1024x1024&w=is&k=20&c=BRdmolwnnbx-R9wVB6hvyRvXtS6hD6hST00eC3Go_fg=');
+  background-size: cover;
+  background-position: center;
+  padding: 20px; /* Adjusted padding for better fit on smaller screens */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box; /* Include padding in element's total width and height */
+}
+
+.form-container {
+  max-width: 900px;
+  width: 100%;
+  padding: 25px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box; /* Include padding in element's total width and height */
+}
+
+h2 {
+  text-align: center;
+  color: #1a1a1a;
+  margin-bottom: 20px;
+  font-size: 1.8em; /* Slightly larger heading */
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap; /* Allows items to wrap to next line on smaller screens */
+  align-items: center;
+  gap: 10px;
+  /* Ensure consistent spacing for labels and inputs */
+}
+
+/* Specific styling for label width in form-row */
+.form-row label {
+  min-width: 90px; /* Increased min-width for labels */
+  font-weight: bold;
+  color: #333;
+  text-align: right; /* Align labels to the right */
+  padding-right: 5px; /* Space between label and input */
+  flex-shrink: 0; /* Prevent label from shrinking */
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+  padding: 8px 10px; /* Slightly more padding for better appearance */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  flex: 1; /* Allows inputs to grow and shrink */
+  min-width: 150px; /* Ensure inputs don't get too small */
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+  font-size: 1em;
+}
+
+/* Styles for specific input types within form-row to better distribute space */
+.form-row input[type="date"],
+.form-row input[type="time"] {
+    flex: 0.5; /* Date and Time can be smaller */
+    min-width: 120px;
+}
+
+.form-row.large-text-area-row {
+    flex-direction: column; /* Stack label and textarea vertically */
+    align-items: flex-start; /* Align labels to the left */
+}
+
+.form-row.large-text-area-row label {
+    text-align: left; /* Align labels for textareas to the left */
+    width: 100%; /* Make label take full width above textarea */
+    margin-bottom: 5px;
+}
+
+.form-row.large-text-area-row textarea {
+    width: 100%;
+    flex: none; /* Override flex: 1 for textareas to take full width */
+}
+
+textarea {
+  resize: vertical; /* Allow only vertical resizing */
+  min-height: 80px; /* Minimum height for textareas */
+}
+
+/* Vitals row specific adjustments */
+.form-row.vitals-row input {
+    flex: 0.5; /* Give vitals inputs more controlled width */
+    min-width: 80px; /* Smaller min-width for vitals inputs */
+}
+
+/* --- Read-Only Field Styling --- */
+input[readOnly],
+textarea[readOnly] {
+  background-color: #e9ecef; /* A light grey background for read-only */
+  color: #495057; /* Slightly darker text for readability */
+  cursor: not-allowed; /* Indicate it's not editable */
+  border-color: #ced4da; /* A slightly different border */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.075); /* Subtle inner shadow */
+}
+
+input[readOnly]:focus,
+textarea[readOnly]:focus {
+  outline: none; /* Remove outline on focus for read-only fields */
+  border-color: #ced4da; /* Keep border consistent on focus */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.075); /* Keep shadow consistent */
+}
+
+/* Placeholder styling for read-only fields (optional, might not be visible if value exists) */
+input[readOnly]::placeholder,
+textarea[readOnly]::placeholder {
+  color: #6c757d; /* Make placeholder text a bit darker */
+}
+
+
+.form-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px; /* More space above buttons */
+  justify-content: center; /* Center buttons */
+}
+
+.form-buttons button {
+  padding: 8px 16px; /* Slightly larger buttons */
+  background-color: #007bff;
+  border: none;
+  border-radius: 5px; /* Slightly more rounded corners */
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease; /* Smooth transition */
+}
+
+.form-buttons button:hover:not(:disabled) {
+  background-color: #0056b3;
+  transform: translateY(-1px); /* Slight lift on hover */
+}
+
+.form-buttons button:active:not(:disabled) {
+  transform: translateY(0); /* Press effect */
+}
+
+.form-buttons button:disabled {
+  background-color: #cccccc; /* Grey out disabled buttons */
+  cursor: not-allowed;
+  opacity: 0.7; /* Slightly transparent */
+}
+
+/* History Navigation Buttons */
+.history-navigation-buttons {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px dashed #ddd;
+}
+
+.history-navigation-buttons button {
+    padding: 6px 10px;
+    background-color: #28a745; /* Green for navigation */
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.history-navigation-buttons button:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+.history-navigation-buttons button:disabled {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
+    color: #666;
+}
+
+.history-navigation-buttons span {
+    font-weight: bold;
+    color: #555;
+    font-size: 1em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .form-row {
+    flex-direction: column; /* Stack elements vertically on smaller screens */
+    align-items: flex-start; /* Align labels/inputs to the left */
+    gap: 5px;
+  }
+
+  .form-row label {
+    width: 100%; /* Labels take full width */
+    text-align: left; /* Align labels to the left */
+    padding-right: 0;
+  }
+
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    width: 100%; /* Inputs take full width */
+    min-width: unset; /* Remove min-width constraint */
+  }
+
+  .form-buttons {
+    flex-direction: column; /* Stack buttons vertically */
+    align-items: stretch; /* Stretch buttons to full width */
+  }
+
+  .form-buttons button {
+    width: 100%; /* Full width buttons */
+  }
+
+  .form-row.vitals-row {
+      flex-direction: row; /* Keep vitals in a row if possible, but allow wrap */
+      flex-wrap: wrap;
+      justify-content: space-between;
+  }
+
+  .form-row.vitals-row label,
+  .form-row.vitals-row input {
+      width: auto; /* Let content dictate width */
+      flex-basis: calc(50% - 15px); /* Two columns on mobile */
+      min-width: 100px;
+  }
+
+  .form-row.vitals-row label {
+      text-align: left;
+      flex-basis: 100%; /* Label takes full width then input follows */
+  }
+}
+
+@media (max-width: 480px) {
+    .form-row.vitals-row label,
+    .form-row.vitals-row input {
+        flex-basis: 100%; /* Stack vitals vertically on very small screens */
+    }
+}

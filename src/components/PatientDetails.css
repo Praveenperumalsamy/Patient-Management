@@ -1,0 +1,166 @@
+/* Base body styling */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background: #f0f0f0;
+}
+
+/* Apply background image ONLY on patient-details page */
+.patient-details-page {
+    background-image: url('https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=2053&auto=format&fit=crop&ixlib=rb-4.0.3');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    min-height: 100vh;
+}
+
+/* Container with frosted glass effect */
+.patient-details-container {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    margin: 30px auto;
+    max-width: 1200px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Form section styling */
+.form-section {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Main form layout */
+.patient-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Row layout */
+.form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Label styling */
+label {
+    min-width: 100px;
+    font-weight: bold;
+    color: #333; /* Slightly darker text for better contrast */
+}
+
+/* Input styles */
+input[type="text"],
+input[type="date"],
+input[type="time"],
+input[type="email"],
+input[type="file"],
+select {
+    padding: 6px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    flex: 1;
+    min-width: 150px; /* Ensure inputs don't shrink too much */
+    background: #fff; /* Ensure white background for inputs */
+}
+
+/* Style for the file input and link */
+input[type="file"] {
+    padding: 3px; /* Adjust padding for file input */
+}
+
+.form-row a {
+    color: #007bff;
+    text-decoration: none;
+    margin-left: 10px;
+    font-size: 14px;
+}
+
+.form-row a:hover {
+    text-decoration: underline;
+}
+
+/* Align radio and checkbox */
+input[type="radio"],
+input[type="checkbox"] {
+    margin-right: 5px;
+    transform: scale(1.1);
+}
+
+/* Sidebar buttons */
+.sidebar-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 100px; /* Ensure sidebar doesn't collapse */
+}
+
+/* Sidebar buttons styling */
+.sidebar-buttons button {
+    padding: 8px 12px;
+    font-size: 14px;
+    border: none;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease;
+}
+
+.sidebar-buttons button:hover {
+    background-color: #ddd;
+}
+
+.sidebar-buttons button:disabled {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .patient-details-container {
+        flex-direction: column;
+    }
+
+    .form-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    label {
+        min-width: auto;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="time"],
+    input[type="email"],
+    input[type="file"],
+    select {
+        min-width: auto;
+        width: 100%; /* Full width on mobile */
+    }
+
+    .sidebar-buttons {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .sidebar-buttons button {
+        flex: 1 1 45%; /* Two buttons per row on mobile */
+        margin: 5px;
+    }
+}

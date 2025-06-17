@@ -1,0 +1,44 @@
+.dashboard-layout {
+  display: flex;
+}
+
+.dashboard-main {
+  margin-left: 220px;
+  padding: 40px;
+  width: 100%;
+  background-color: #f4f6fa;
+  min-height: 100vh;
+}
+
+.dashboard-main h1 {
+  font-size: 2.2rem;
+  margin-bottom: 30px;
+  color: #333;
+}
+
+.dashboard-cards {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.card {
+  flex: 1 1 250px;
+  background-color: #fff;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.card p {
+  font-size: 1.8rem;
+  color: #007bff;
+  font-weight: bold;
+}
