@@ -239,9 +239,13 @@ const PatientDetails = () => {
   };
 
   const uploadToCloudinary = async (file) => {
-    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    // Updated allowed file types to include common video formats
+    const allowed = [
+      "image/jpeg", "image/png", "application/pdf",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-flv", "video/mpeg", "video/ogg", "video/x-ms-wmv"
+    ];
     if (!allowed.includes(file.type)) {
-      toast.error("Only JPG, PNG, or PDF files allowed.", { duration: 3000 });
+      toast.error("Only JPG, PNG, PDF, or common video formats (MP4, WebM, MOV, AVI, FLV, MPEG, OGG, WMV) allowed.", { duration: 4000 });
       return null;
     }
 
@@ -273,7 +277,7 @@ const PatientDetails = () => {
       let fileUrl = "";
       if (formData.file) {
         fileUrl = await uploadToCloudinary(formData.file);
-        if (!fileUrl) return;
+        if (!fileUrl) return; // Stop if upload failed
       }
 
       await addDoc(collection(db, "patients"), {
@@ -630,10 +634,24 @@ const PatientDetails = () => {
 
             <div className="form-row">
               <label>Upload File</label>
-              {/* File input is always enabled when in 'new' or 'edit' mode */}
-              <input type="file" name="file" onChange={handleInputChange} disabled={mode === 'view'} />
+              {/* File input now accepts image, PDF, and video types */}
+              <input
+                type="file"
+                name="file"
+                onChange={handleInputChange}
+                disabled={mode === 'view'}
+                accept="image/*,application/pdf,video/*" // Added video types here
+              />
               {formData.file && typeof formData.file === 'string' && (
-                <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current File</a>
+                <>
+                  {formData.file.startsWith('image/') || formData.file.endsWith('.jpg') || formData.file.endsWith('.png') || formData.file.endsWith('.jpeg') ? (
+                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current Image</a>
+                  ) : formData.file.endsWith('.pdf') ? (
+                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current PDF</a>
+                  ) : (
+                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current Video</a>
+                  )}
+                </>
               )}
               {/* Option to clear file in edit/new mode if a file is present */}
               {(mode === 'new' || mode === 'edit') && formData.file && (
