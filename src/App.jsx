@@ -1,8 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import Login from './components/Login';
-import Dashboard from './components/Dashboard';
-import OPHistory from './components/Ophistory';
+import Login from '../src/components/login';
+import Dashboard from '../src/components/Dashboard';
+import OPHistory from '../src/components/Ophistory';
 import PatientDetails from './components/PatientDetails';
 
 function Logout({ onLogout }) {
