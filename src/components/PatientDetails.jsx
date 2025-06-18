@@ -40,7 +40,7 @@ const PatientDetails = () => {
     operatorName: "",
     refDoctor: "",
     bloodGroup: "",
-    file: null,
+    files: [], // Changed to an array for multiple files
     date: "",
     time: "",
   });
@@ -99,8 +99,8 @@ const PatientDetails = () => {
         dob: doc.data().dob || "",
         age: doc.data().age || "",
         address: doc.data().address || "",
-        temp: doc.data().temperature || "",
-        pr: doc.data().pulse || "",
+        temp: doc.data().temperature || doc.data().temp || "",
+        pr: doc.data().pulse || doc.data().pr || "",
         bp: doc.data().bp || "",
         spo2: doc.data().spo2 || "",
         consultant: doc.data().consultant || "",
@@ -109,7 +109,7 @@ const PatientDetails = () => {
         operatorName: doc.data().operatorName || "",
         refDoctor: doc.data().refDoctor || "",
         bloodGroup: doc.data().bloodGroup || "",
-        file: doc.data().file || null,
+        files: doc.data().files || (doc.data().file ? [doc.data().file] : []), // Handle existing 'file' as a single-element array for backward compatibility
         date: doc.data().date || "",
         time: doc.data().time || "",
         timestamp: doc.data().timestamp ? doc.data().timestamp.toDate() : new Date(0), // Convert Firebase Timestamp to Date object, default to epoch for safety
@@ -117,41 +117,52 @@ const PatientDetails = () => {
       setPatients(data);
 
       // Only load first patient if not already in 'new' or 'edit' mode
-      if (mode === 'view' || mode === 'edit') { // If it's 'edit' mode, we preserve the current form data
+      if (mode === 'view') { // If it's 'edit' mode, we preserve the current form data
         if (data.length > 0) {
-          // If in 'view' mode, load the first patient. If in 'edit' mode, keep current data, don't auto-load.
-          if (mode === 'view') {
-            setFormData({ ...data[0], file: data[0].file || null });
-            setCurrentIndex(0);
-          }
+          setFormData({ ...data[0], files: data[0].files || [] });
+          setCurrentIndex(0);
         } else {
           setCurrentIndex(-1);
           clearForm(); // Clear form if no patients
         }
+      } else if (mode === 'edit' && currentIndex !== -1 && patients[currentIndex]) {
+        // If in edit mode and the current patient exists in the refetched list, re-apply their data.
+        // This helps if data was changed externally or the current patient was deleted.
+        const updatedPatient = data.find(p => p.id === patients[currentIndex].id);
+        if (updatedPatient) {
+          setFormData({ ...updatedPatient, files: updatedPatient.files || [] });
+          setCurrentIndex(data.indexOf(updatedPatient));
+        } else {
+          // If the patient being edited was deleted, clear form and go to view mode.
+          clearForm();
+          toast.info("Patient being edited was removed by another user or session.", {duration: 3000});
+        }
       }
-      setMode('view'); // Always revert to view mode after fetching, unless explicit action is pending
+      // setMode('view'); // Not always revert to view mode after fetching, depends on current mode
     } catch (error) {
       console.error("Error fetching patients:", error);
       toast.error("Failed to fetch patient data.", { duration: 3000 });
     }
   };
 
-  const hasUnsavedChanges = () => {
-    if (currentIndex < 0 || currentIndex >= patients.length) return false;
-    const currentPatient = patients[currentIndex];
-    // Compare formData with the currently loaded patient's data
-    // Exclude 'file' if it's a File object (newly selected, not yet uploaded)
-    const currentFormDataComparable = { ...formData };
-    if (currentFormDataComparable.file instanceof File) {
-      delete currentFormDataComparable.file;
-    }
-    const currentPatientComparable = { ...currentPatient };
-    if (currentPatientComparable.file) { // If there's an existing file string, we'll keep it.
-        // No change needed here, just ensure comparison is consistent.
+  const hasUnsavedChanges = useCallback(() => {
+    if (currentIndex < 0 || currentIndex >= patients.length) {
+      // If no patient loaded or invalid index, and it's not 'new' mode, no unsaved changes.
+      if (mode !== 'new') return false;
+      // In 'new' mode, consider changes if basic fields are filled
+      return !!formData.name || !!formData.opNo || !!formData.regNo || formData.files.length > 0;
     }
 
-    // Direct comparison of relevant fields
-    return (
+    const currentPatient = patients[currentIndex];
+    const currentFormDataComparable = { ...formData };
+
+    // Filter out File objects from formData for comparison, keep URLs
+    const currentFormFiles = currentFormDataComparable.files.filter(f => typeof f === 'string');
+    // Track if any new files (File objects) have been added
+    const newFilesAdded = currentFormDataComparable.files.some(f => f instanceof File);
+
+    // Compare simple fields
+    const fieldsChanged = (
       currentFormDataComparable.opNo !== currentPatient.opNo ||
       currentFormDataComparable.regNo !== currentPatient.regNo ||
       currentFormDataComparable.name !== currentPatient.name ||
@@ -159,9 +170,9 @@ const PatientDetails = () => {
       currentFormDataComparable.maritalStatus !== currentPatient.maritalStatus ||
       currentFormDataComparable.spouseName !== currentPatient.spouseName ||
       currentFormDataComparable.dob !== currentPatient.dob ||
-      currentFormDataComparable.age !== currentPatient.age || // Age is derived, but included for completeness if stored
+      currentFormDataComparable.age !== currentPatient.age ||
       currentFormDataComparable.address !== currentPatient.address ||
-      currentFormDataComparable.temp !== (currentPatient.temperature || currentPatient.temp) || // Handle potential field name differences
+      currentFormDataComparable.temp !== (currentPatient.temperature || currentPatient.temp) ||
       currentFormDataComparable.pr !== (currentPatient.pulse || currentPatient.pr) ||
       currentFormDataComparable.bp !== currentPatient.bp ||
       currentFormDataComparable.spo2 !== currentPatient.spo2 ||
@@ -170,11 +181,21 @@ const PatientDetails = () => {
       currentFormDataComparable.email !== currentPatient.email ||
       currentFormDataComparable.operatorName !== currentPatient.operatorName ||
       currentFormDataComparable.refDoctor !== currentPatient.refDoctor ||
-      currentFormDataComparable.bloodGroup !== currentPatient.bloodGroup ||
-      // Handle file comparison: if it's a new File object, or if the URL has changed/been cleared
-      (formData.file instanceof File) || (typeof formData.file === 'string' && formData.file !== currentPatient.file) || (formData.file === null && currentPatient.file)
+      currentFormDataComparable.bloodGroup !== currentPatient.bloodGroup
     );
-  };
+
+    // Compare files:
+    // 1. Check if the number of files changed
+    // 2. Check if the set of file URLs changed (order doesn't matter for content equality)
+    const currentPatientFiles = Array.isArray(currentPatient.files) ? currentPatient.files : (currentPatient.file ? [currentPatient.file] : []); // Handle legacy 'file' field
+    const fileUrlsChanged =
+      newFilesAdded || // If new files are present, there are unsaved changes
+      currentFormFiles.length !== currentPatientFiles.length ||
+      !currentFormFiles.every(url => currentPatientFiles.includes(url)) || // Check if all current form URLs exist in patient files
+      !currentPatientFiles.every(url => currentFormFiles.includes(url)); // Check if all patient files exist in current form URLs
+
+    return fieldsChanged || fileUrlsChanged;
+  }, [formData, currentIndex, patients, mode]);
 
 
   const calculateAge = (dobString) => {
@@ -191,8 +212,11 @@ const PatientDetails = () => {
 
   const handleInputChange = (e) => {
     const { name, value, files } = e.target;
-    if (files) {
-      setFormData((prev) => ({ ...prev, [name]: files[0] }));
+    if (name === "files" && files) { // Handle the specific 'files' input
+      setFormData((prev) => ({
+        ...prev,
+        files: [...prev.files, ...Array.from(files)], // Add new files to the existing array
+      }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -230,7 +254,7 @@ const PatientDetails = () => {
       operatorName: "",
       refDoctor: "",
       bloodGroup: "",
-      file: null,
+      files: [], // Clear files array
       date: formattedDate,
       time: formattedTime,
     });
@@ -238,51 +262,69 @@ const PatientDetails = () => {
     setMode('view'); // Always return to view mode after clearing
   };
 
-  const uploadToCloudinary = async (file) => {
-    // Updated allowed file types to include common video formats
+  // New function to remove a single file from the formData.files array
+  const removeFile = (indexToRemove) => {
+    setFormData((prev) => ({
+      ...prev,
+      files: prev.files.filter((_, index) => index !== indexToRemove),
+    }));
+    toast.info('File removed from selection. Save changes to confirm.', { duration: 2000 });
+  };
+
+
+  const uploadToCloudinary = async (filesToUpload) => {
+    const uploadedUrls = [];
     const allowed = [
       "image/jpeg", "image/png", "application/pdf",
       "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-flv", "video/mpeg", "video/ogg", "video/x-ms-wmv"
     ];
-    if (!allowed.includes(file.type)) {
-      toast.error("Only JPG, PNG, PDF, or common video formats (MP4, WebM, MOV, AVI, FLV, MPEG, OGG, WMV) allowed.", { duration: 4000 });
-      return null;
-    }
 
-    const cloudData = new FormData();
-    cloudData.append("file", file);
-    cloudData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    for (const file of filesToUpload) {
+      if (!allowed.includes(file.type)) {
+        toast.error(`File "${file.name}" is not a supported type. Only JPG, PNG, PDF, or common video formats allowed.`, { duration: 4000 });
+        continue; // Skip this file and try the next one
+      }
 
-    try {
-      const res = await axios.post(CLOUDINARY_URL, cloudData);
-      return res.data.secure_url;
-    } catch (err) {
-      console.error("Cloudinary upload error:", err);
-      toast.error("File upload failed. Please check console for details.", { duration: 3000 });
-      return null;
+      const cloudData = new FormData();
+      cloudData.append("file", file);
+      cloudData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+      try {
+        const res = await axios.post(CLOUDINARY_URL, cloudData);
+        uploadedUrls.push(res.data.secure_url);
+        toast.success(`File "${file.name}" uploaded successfully!`, { duration: 1500 });
+      } catch (err) {
+        console.error(`Cloudinary upload error for ${file.name}:`, err);
+        toast.error(`File "${file.name}" upload failed. Please check console for details.`, { duration: 3000 });
+      }
     }
+    return uploadedUrls;
   };
 
   const handleSave = async () => {
     if (mode !== 'new') {
-        toast.error("Form is not in 'New Entry' mode to save.", { duration: 3000 });
-        return;
+      toast.error("Form is not in 'New Entry' mode to save.", { duration: 3000 });
+      return;
     }
     if (!formData.name || !formData.opNo || !formData.regNo) {
-        toast.error("Name, O.P. No., and Reg. No. are required to save a new patient.", { duration: 3000 });
-        return;
+      toast.error("Name, O.P. No., and Reg. No. are required to save a new patient.", { duration: 3000 });
+      return;
     }
 
     try {
-      let fileUrl = "";
-      if (formData.file) {
-        fileUrl = await uploadToCloudinary(formData.file);
-        if (!fileUrl) return; // Stop if upload failed
+      let uploadedFileUrls = [];
+      const filesToUpload = formData.files.filter(f => f instanceof File); // Only upload new File objects
+
+      if (filesToUpload.length > 0) {
+        uploadedFileUrls = await uploadToCloudinary(filesToUpload);
+        if (uploadedFileUrls.length !== filesToUpload.length) {
+          toast.warn("Some files could not be uploaded. Patient will be saved with available files.", { duration: 5000 });
+        }
       }
 
       await addDoc(collection(db, "patients"), {
         ...formData,
-        file: fileUrl,
+        files: uploadedFileUrls, // Save the array of uploaded URLs
         timestamp: new Date(), // Ensure timestamp is set on creation
       });
 
@@ -317,14 +359,14 @@ const PatientDetails = () => {
     setIsModalOpen(false); // Close the modal first
 
     if (type === 'edit') {
-      setFormData({ ...selectedPatient, file: selectedPatient.file || null });
+      setFormData({ ...selectedPatient, files: selectedPatient.files || [] });
       const index = patients.findIndex(p => p.id === selectedPatient.id);
       setCurrentIndex(index);
       setMode('edit'); // Set mode to 'edit'
       toast.success(`Patient "${selectedPatient.name}" loaded for editing.`, { duration: 2000 });
     } else if (type === 'remove') {
       setPatientToDelete(selectedPatient); // Store patient to delete
-      setShowConfirmDeleteModal(true);    // Show confirmation modal
+      setShowConfirmDeleteModal(true);    // Show confirmation modal
     }
     setActionType(null); // Reset action type
   };
@@ -360,29 +402,33 @@ const PatientDetails = () => {
       return;
     }
     if (!formData.name || !formData.opNo || !formData.regNo) {
-        toast.error("Name, O.P. No., and Reg. No. are required to update a patient.", { duration: 3000 });
-        return;
+      toast.error("Name, O.P. No., and Reg. No. are required to update a patient.", { duration: 3000 });
+      return;
     }
-    const patient = patients[currentIndex];
 
     try {
-      let fileUrl = patient.file; // Start with existing file URL
-      if (formData.file instanceof File) { // If a new file object is selected
-        fileUrl = await uploadToCloudinary(formData.file);
-        if (!fileUrl) return; // Stop if upload failed
-      } else if (formData.file === null && patient.file) { // If file was explicitly cleared
-        fileUrl = null;
+      let finalFileUrls = [];
+      const filesToUpload = formData.files.filter(f => f instanceof File); // Files that are new and need uploading
+      const retainedUrls = formData.files.filter(f => typeof f === 'string'); // URLs of existing files that were kept
+
+      if (filesToUpload.length > 0) {
+        const uploadedNewUrls = await uploadToCloudinary(filesToUpload);
+        if (uploadedNewUrls.length !== filesToUpload.length) {
+          toast.warn("Some new files failed to upload during update.", { duration: 5000 });
+        }
+        finalFileUrls = [...retainedUrls, ...uploadedNewUrls];
+      } else {
+        finalFileUrls = retainedUrls; // No new files, just use the retained URLs
       }
 
+      const patient = patients[currentIndex]; // Get the original patient object to find its ID
       const docRef = doc(db, "patients", patient.id);
       const dataToUpdate = { ...formData };
-      if (dataToUpdate.file instanceof File) {
-        delete dataToUpdate.file; // Ensure we don't save the File object directly
-      }
+      delete dataToUpdate.files; // Ensure we don't save File objects directly
 
       await updateDoc(docRef, {
         ...dataToUpdate,
-        file: fileUrl, // Use the updated/retained fileUrl
+        files: finalFileUrls, // Use the updated/retained array of file URLs
         timestamp: new Date(), // Ensure timestamp is updated on modification
       });
 
@@ -401,14 +447,14 @@ const PatientDetails = () => {
       return;
     }
     if (index >= 0 && index < patients.length) {
-      setFormData({ ...patients[index], file: patients[index].file || null });
+      setFormData({ ...patients[index], files: patients[index].files || [] });
       setCurrentIndex(index);
       setMode('view'); // Ensure always in view mode after navigation
       if (message) {
         toast.info(message, { duration: 1500 });
       }
     } else {
-        toast.error("Navigation not possible.", { duration: 1500 });
+      toast.error("Navigation not possible.", { duration: 1500 });
     }
   };
 
@@ -424,7 +470,7 @@ const PatientDetails = () => {
     }
     const lastIndex = patients.length - 1;
     const lastPatient = patients[lastIndex];
-    setFormData({ ...lastPatient, file: lastPatient.file || null });
+    setFormData({ ...lastPatient, files: lastPatient.files || [] });
     setCurrentIndex(lastIndex);
     setMode('view'); // Ensure always in view mode after navigation
     toast.success(`Showing most recent patient: ${lastPatient.name} (OP No: ${lastPatient.opNo})`, { duration: 2000 });
@@ -474,22 +520,22 @@ const PatientDetails = () => {
 
   const handleCancel = () => {
     if (mode === 'new') {
-        // If in new mode, clear and go back to view
-        clearForm();
-        toast.info('New entry cancelled.', { duration: 2000 });
+      // If in new mode, clear and go back to view
+      clearForm();
+      toast.info('New entry cancelled.', { duration: 2000 });
     } else if (mode === 'edit') {
-        // If in edit mode, revert to original patient data and go to view
-        if (currentIndex !== -1 && patients[currentIndex]) {
-            setFormData({ ...patients[currentIndex], file: patients[currentIndex].file || null });
-            setMode('view');
-            toast.info('Edit cancelled. Changes discarded.', { duration: 2000 });
-        } else {
-            clearForm(); // Fallback if index is somehow invalid
-            toast.info('Edit cancelled. Form cleared.', { duration: 2000 });
-        }
+      // If in edit mode, revert to original patient data and go to view
+      if (currentIndex !== -1 && patients[currentIndex]) {
+        setFormData({ ...patients[currentIndex], files: patients[currentIndex].files || [] });
+        setMode('view');
+        toast.info('Edit cancelled. Changes discarded.', { duration: 2000 });
+      } else {
+        clearForm(); // Fallback if index is somehow invalid
+        toast.info('Edit cancelled. Form cleared.', { duration: 2000 });
+      }
     } else {
-        // If in view mode, no specific action, maybe just a toast
-        toast.info('No active operation to cancel.', { duration: 2000 });
+      // If in view mode, no specific action, maybe just a toast
+      toast.info('No active operation to cancel.', { duration: 2000 });
     }
   };
 
@@ -519,6 +565,11 @@ const PatientDetails = () => {
           info: {
             style: {
               borderLeft: '4px solid #17a2b8',
+            },
+          },
+          warn: { // Added warning style
+            style: {
+              borderLeft: '4px solid #ffc107',
             },
           },
         }}
@@ -632,30 +683,57 @@ const PatientDetails = () => {
               <input type="text" name="bloodGroup" value={formData.bloodGroup} onChange={handleInputChange} readOnly={mode === 'view'} />
             </div>
 
-            <div className="form-row">
-              <label>Upload File</label>
-              {/* File input now accepts image, PDF, and video types */}
+            <div className="form-row file-upload-section">
+              <label>Upload Files</label>
               <input
                 type="file"
-                name="file"
+                name="files" // Changed name to 'files'
                 onChange={handleInputChange}
                 disabled={mode === 'view'}
-                accept="image/*,application/pdf,video/*" // Added video types here
+                accept="image/*,application/pdf,video/*"
+                multiple // Added multiple attribute
               />
-              {formData.file && typeof formData.file === 'string' && (
-                <>
-                  {formData.file.startsWith('image/') || formData.file.endsWith('.jpg') || formData.file.endsWith('.png') || formData.file.endsWith('.jpeg') ? (
-                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current Image</a>
-                  ) : formData.file.endsWith('.pdf') ? (
-                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current PDF</a>
-                  ) : (
-                    <a href={formData.file} target="_blank" rel="noopener noreferrer">View Current Video</a>
-                  )}
-                </>
-              )}
-              {/* Option to clear file in edit/new mode if a file is present */}
-              {(mode === 'new' || mode === 'edit') && formData.file && (
-                  <button type="button" onClick={() => setFormData(prev => ({...prev, file: null}))} style={{marginLeft: '10px', padding: '5px 10px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>Clear File</button>
+              {formData.files && formData.files.length > 0 && (
+                <div className="uploaded-files-preview">
+                  <h4>Uploaded/Selected Files:</h4>
+                  <ul>
+                    {formData.files.map((file, index) => (
+                      <li key={index} style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+                        {typeof file === 'string' ? (
+                          // Existing file (URL)
+                          <>
+                            {file.match(/\.(jpeg|jpg|png)$/i) ? (
+                              <a href={file} target="_blank" rel="noopener noreferrer">View Image {index + 1}</a>
+                            ) : file.match(/\.pdf$/i) ? (
+                              <a href={file} target="_blank" rel="noopener noreferrer">View PDF {index + 1}</a>
+                            ) : file.match(/\.(mp4|webm|mov|avi|flv|mpeg|ogg|wmv)$/i) ? (
+                              <a href={file} target="_blank" rel="noopener noreferrer">View Video {index + 1}</a>
+                            ) : (
+                              <a href={file} target="_blank" rel="noopener noreferrer">View File {index + 1}</a>
+                            )}
+                            {(mode === 'new' || mode === 'edit') && (
+                                <button type="button" onClick={() => removeFile(index)}
+                                    style={{ marginLeft: '10px', padding: '3px 8px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8em' }}>
+                                    Remove
+                                </button>
+                            )}
+                          </>
+                        ) : (
+                          // Newly selected file (File object)
+                          <span style={{ fontStyle: 'italic' }}>
+                            {file.name} (New)
+                            {(mode === 'new' || mode === 'edit') && (
+                                <button type="button" onClick={() => removeFile(index)}
+                                    style={{ marginLeft: '10px', padding: '3px 8px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.8em' }}>
+                                    Remove
+                                </button>
+                            )}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           </form>
