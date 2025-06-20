@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import './Ophistory.css'; // Ensure Ophistory.css is in the same directory as this file.
-import { db } from '../Firebase.js'; // Corrected: Added .js extension. Please check if your Firebase config file is Firebase.js or Firebase.jsx in the parent directory.
+import './Ophistory.css';
+import { db } from '../Firebase.js';
 import {
   collection,
   query,
@@ -14,8 +14,47 @@ import {
   limit,
 } from 'firebase/firestore';
 import toast, { Toaster } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate for redirection
+import { useNavigate } from 'react-router-dom';
 
+// --- HistoryListModal Component ---
+// This component will be rendered as a modal to display all history entries.
+const HistoryListModal = ({ isOpen, onClose, historyRecords, onSelectHistory }) => {
+  if (!isOpen) return null;
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-GB'); // Example: DD/MM/YYYY
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h3>Select History Entry</h3>
+        {historyRecords.length === 0 ? (
+          <p>No history records available for this patient.</p>
+        ) : (
+          <ul className="history-list">
+            {historyRecords.map((record, index) => (
+              <li key={record.id || index} onClick={() => onSelectHistory(index)}>
+                <strong>Date:</strong> {formatDate(record.date)} &nbsp;
+                <strong>Time:</strong> {record.time} &nbsp;
+                <span>({record.diagnosis ? `Diagnosis: ${record.diagnosis.substring(0, 50)}...` : 'No Diagnosis'})</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button onClick={onClose} className="modal-close-button">Close</button>
+      </div>
+    </div>
+  );
+};
+
+// --- OPHistoryForm Component ---
 const OPHistoryForm = () => {
   const [formData, setFormData] = useState({
     opNo: '',
@@ -38,12 +77,15 @@ const OPHistoryForm = () => {
   const [currentPatientStaticDetails, setCurrentPatientStaticDetails] = useState(null);
   const [opHistoryRecords, setOpHistoryRecords] = useState([]);
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
-  const [fileUrl, setFileUrl] = useState(null);
+  const [patientFileUrls, setPatientFileUrls] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const [lastFetchedOpNo, setLastFetchedOpNo] = useState(null); // Track the last fetched opNo
+  const [lastFetchedOpNo, setLastFetchedOpNo] = useState(null);
 
-  const navigate = useNavigate(); // Initialize useNavigate hook for navigation
+  // NEW STATE: To control the visibility of the history list modal
+  const [showHistoryListModal, setShowHistoryListModal] = useState(false);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     console.log('OPHistoryForm mounted');
@@ -77,9 +119,11 @@ const OPHistoryForm = () => {
       console.log('Already fetching, aborting duplicate fetch for opNo:', opNoToSearch);
       return;
     }
-    // Only skip if the opNo is the same AND we have previously successfully fetched for it
     if (opNoToSearch === lastFetchedOpNo && currentPatientStaticDetails) {
       console.log('opNo already successfully fetched, skipping re-fetch:', opNoToSearch);
+      if (opNoToSearch) {
+        fetchOPHistory(opNoToSearch);
+      }
       return;
     }
 
@@ -90,6 +134,7 @@ const OPHistoryForm = () => {
       console.log('No opNo provided, resetting form');
       setCurrentPatientStaticDetails(null);
       setFormData((prev) => {
+        const { formattedDate, formattedTime } = getCurrentDateTime();
         const newFormData = {
           ...prev,
           patientName: '',
@@ -104,13 +149,15 @@ const OPHistoryForm = () => {
           investigation: '',
           diagnosis: '',
           reviewDate: '',
+          date: formattedDate,
+          time: formattedTime,
         };
         console.log('Reset formData:', newFormData);
         return newFormData;
       });
       setOpHistoryRecords([]);
       setCurrentHistoryIndex(-1);
-      setFileUrl(null);
+      setPatientFileUrls([]);
       console.log('Setting isEditing to false in fetchPatientDetailsByOpNo (no opNo)');
       setIsEditing(false);
       setLastFetchedOpNo(null);
@@ -150,26 +197,30 @@ const OPHistoryForm = () => {
             patientName: patientData.name || '',
             sex: patientData.sex || '',
             age: patientData.age || '',
-            refDoctor: patientData.refDoctor || patientData.consultant || '', // Check both fields
+            refDoctor: patientData.refDoctor || patientData.consultant || '',
             temp: newVitals.temp,
             pr: newVitals.pr,
             bp: newVitals.bp,
             spo2: newVitals.spo2,
+            historyExamination: '',
+            investigation: '',
+            diagnosis: '',
+            reviewDate: '',
           };
           console.log('Setting formData after patient fetch:', newFormData);
           return newFormData;
         });
-        setFileUrl(patientData.file || null);
+        setPatientFileUrls(patientData.files && Array.isArray(patientData.files) ? patientData.files : []);
         toast.success(`Patient "${patientData.name}" details loaded.`, { duration: 3000 });
-        setLastFetchedOpNo(opNoToSearch); // Mark this opNo as fetched
-        // Delay fetching history slightly to ensure patient details are settled
+        setLastFetchedOpNo(opNoToSearch);
         setTimeout(() => fetchOPHistory(opNoToSearch), 500);
         console.log('Setting isEditing to false in fetchPatientDetailsByOpNo (patient found)');
-        setIsEditing(false); // After fetching, form should be in view mode, not editing
+        setIsEditing(false);
       } else {
         console.log('No patient found for opNo:', opNoToSearch);
         setCurrentPatientStaticDetails(null);
         setFormData((prev) => {
+          const { formattedDate, formattedTime } = getCurrentDateTime();
           const newFormData = {
             ...prev,
             patientName: '',
@@ -184,17 +235,19 @@ const OPHistoryForm = () => {
             investigation: '',
             diagnosis: '',
             reviewDate: '',
+            date: formattedDate,
+            time: formattedTime,
           };
           console.log('Setting formData (no patient found):', newFormData);
           return newFormData;
         });
-        setFileUrl(null);
+        setPatientFileUrls([]);
         toast.error('No patient found with this O.P. No.', { duration: 3000 });
         setOpHistoryRecords([]);
         setCurrentHistoryIndex(-1);
         console.log('Setting isEditing to false in fetchPatientDetailsByOpNo (no patient found)');
-        setIsEditing(false); // If no patient, not in editing mode
-        setLastFetchedOpNo(null); // Clear last fetched if no patient found
+        setIsEditing(false);
+        setLastFetchedOpNo(null);
       }
     } catch (error) {
       console.error('Error fetching patient details:', error);
@@ -202,7 +255,7 @@ const OPHistoryForm = () => {
     } finally {
       setIsFetching(false);
     }
-  }, [lastFetchedOpNo, isFetching, currentPatientStaticDetails]); // Added dependencies to useCallback
+  }, [lastFetchedOpNo, isFetching, currentPatientStaticDetails]);
 
   const fetchOPHistory = useCallback(async (opNoToSearch) => {
     if (!opNoToSearch) {
@@ -216,7 +269,7 @@ const OPHistoryForm = () => {
       const q = query(
         collection(db, 'opHistory'),
         where('opNo', '==', opNoToSearch),
-        orderBy('timestamp', 'desc') // Order by latest history first
+        orderBy('timestamp', 'desc')
       );
       const querySnapshot = await getDocs(q);
       const historyData = querySnapshot.docs.map((doc) => ({
@@ -227,15 +280,13 @@ const OPHistoryForm = () => {
       setOpHistoryRecords(historyData);
 
       if (historyData.length > 0) {
-        // Load the latest history entry (index 0 because of 'desc' order)
-        loadHistoryEntry(0, historyData);
+        loadHistoryEntry(0, historyData); // Load the newest history entry by default
       } else {
         setCurrentHistoryIndex(-1);
         toast.info("No history records found for this O.P. No. Use 'New' to add one.", { duration: 3000 });
-        // When no history, the form should be ready for a new entry or reset to initial state
-        clearHistorySpecificFields(); // Clear previous history data but keep patient vitals
+        clearHistorySpecificFields();
         console.log('Setting isEditing to false in fetchOPHistory (no history found)');
-        setIsEditing(false); // If no history, not in editing mode
+        setIsEditing(false);
       }
     } catch (error) {
       console.error('Error fetching O.P. History:', error);
@@ -244,28 +295,27 @@ const OPHistoryForm = () => {
       console.log('Setting isEditing to false in fetchOPHistory (error)');
       setIsEditing(false);
     }
-  }, [currentPatientStaticDetails]); // currentPatientStaticDetails to ensure vitals fallback is updated
+  }, [currentPatientStaticDetails]);
 
   // Debounced effect for fetching patient details when opNo changes
   useEffect(() => {
     const handler = setTimeout(() => {
       if (formData.opNo) {
-        // Only fetch if opNo is different from the last fetched one, or if no patient details are loaded
         if (formData.opNo !== lastFetchedOpNo || !currentPatientStaticDetails) {
-            fetchPatientDetailsByOpNo(formData.opNo);
+          fetchPatientDetailsByOpNo(formData.opNo);
         } else {
-            console.log('Skipping fetch because opNo is same as last fetched and details exist.');
+          console.log('Skipping patient details fetch, re-fetching history for same opNo.');
+          fetchOPHistory(formData.opNo); // Ensure history is always refreshed
         }
       } else {
-        // If opNo becomes empty, reset state
-        fetchPatientDetailsByOpNo(''); // Call with empty to trigger full reset
+        fetchPatientDetailsByOpNo('');
       }
-    }, 500); // 500ms debounce
+    }, 500);
 
     return () => {
       clearTimeout(handler);
     };
-  }, [formData.opNo, fetchPatientDetailsByOpNo, lastFetchedOpNo, currentPatientStaticDetails]); // Added dependencies
+  }, [formData.opNo, fetchPatientDetailsByOpNo, lastFetchedOpNo, currentPatientStaticDetails, fetchOPHistory]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -279,17 +329,15 @@ const OPHistoryForm = () => {
     if (name === 'opNo') {
       setCurrentHistoryIndex(-1);
       setOpHistoryRecords([]);
-      setFileUrl(null);
-      // When OP No changes, we revert to non-editing mode until data is loaded or 'New'/'Edit' is pressed
+      setPatientFileUrls([]);
       console.log('Setting isEditing to false because opNo changed');
       setIsEditing(false);
-      setLastFetchedOpNo(null); // Reset lastFetchedOpNo when opNo changes
+      setLastFetchedOpNo(null);
     }
   };
 
-  const clearHistorySpecificFields = () => {
+  const clearHistorySpecificFields = useCallback(() => {
     const { formattedDate, formattedTime } = getCurrentDateTime();
-    // Preserve current vitals if they exist, otherwise try to get from static details
     const temp = formData.temp || currentPatientStaticDetails?.temp || currentPatientStaticDetails?.temperature || '';
     const pr = formData.pr || currentPatientStaticDetails?.pr || currentPatientStaticDetails?.pulse || '';
     const bp = formData.bp || currentPatientStaticDetails?.bp || '';
@@ -300,21 +348,21 @@ const OPHistoryForm = () => {
         ...prev,
         historyExamination: '',
         investigation: '',
-        temp, // Use preserved or static vitals
+        temp,
         pr,
         bp,
         spo2,
         diagnosis: '',
         reviewDate: '',
-        date: formattedDate, // Set to current date for new entry
-        time: formattedTime, // Set to current time for new entry
+        date: formattedDate,
+        time: formattedTime,
       };
       console.log('Updated formData after clearHistorySpecificFields:', newFormData);
       return newFormData;
     });
-  };
+  }, [formData.temp, formData.pr, formData.bp, formData.spo2, currentPatientStaticDetails]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     const { formattedDate, formattedTime } = getCurrentDateTime();
     const newFormData = {
       opNo: '',
@@ -338,39 +386,25 @@ const OPHistoryForm = () => {
     setCurrentPatientStaticDetails(null);
     setOpHistoryRecords([]);
     setCurrentHistoryIndex(-1);
-    setFileUrl(null);
+    setPatientFileUrls([]);
     console.log('Setting isEditing to false in resetForm');
     setIsEditing(false);
     setLastFetchedOpNo(null);
-  };
+  }, []);
 
-  const loadHistoryEntry = (index, records = opHistoryRecords) => {
+  const loadHistoryEntry = useCallback((index, records = opHistoryRecords) => {
     if (records.length === 0) {
       toast.info('No history entries to load.', { duration: 3000 });
       setCurrentHistoryIndex(-1);
       return;
     }
-    // Adjust index for navigation:
-    // '< Prev History' button means moving to an older (higher index if sorted desc) entry
-    // 'Next History >' button means moving to a newer (lower index if sorted desc) entry
-    let targetIndex = index;
 
-    // Boundary checks for navigation
-    if (index >= records.length) {
-        targetIndex = records.length - 1; // Stay at the oldest if trying to go past
-        toast.info('Reached the oldest history entry.', { duration: 2000 });
-    } else if (index < 0) {
-        targetIndex = 0; // Stay at the newest if trying to go before
-        toast.info('Reached the newest history entry.', { duration: 2000 });
-    }
+    let targetIndex = index;
 
     if (targetIndex >= 0 && targetIndex < records.length) {
       const entry = records[targetIndex];
       console.log('Loading history entry:', entry);
 
-      // When loading a history entry, the vitals from that entry should be displayed.
-      // If the history entry doesn't have a specific vital, fall back to current form data
-      // or the static patient details.
       const temp = entry.temp !== undefined && entry.temp !== null ? entry.temp : (formData.temp || currentPatientStaticDetails?.temp || currentPatientStaticDetails?.temperature || '');
       const pr = entry.pr !== undefined && entry.pr !== null ? entry.pr : (formData.pr || currentPatientStaticDetails?.pr || currentPatientStaticDetails?.pulse || '');
       const bp = entry.bp !== undefined && entry.bp !== null ? entry.bp : (formData.bp || currentPatientStaticDetails?.bp || '');
@@ -396,22 +430,22 @@ const OPHistoryForm = () => {
       });
       setCurrentHistoryIndex(targetIndex);
       console.log('Setting isEditing to false in loadHistoryEntry');
-      setIsEditing(false); // After loading, form is not in editing mode
+      setIsEditing(false);
       toast.success(`History entry ${targetIndex + 1} of ${records.length} loaded.`, { duration: 2000 });
     } else {
-        toast.info('Navigation boundary reached.', { duration: 2000 });
+      toast.info('Navigation boundary reached.', { duration: 2000 });
     }
-  };
+  }, [formData.temp, formData.pr, formData.bp, formData.spo2, currentPatientStaticDetails, opHistoryRecords]);
 
   const handleNew = () => {
     if (!formData.opNo || !currentPatientStaticDetails) {
-        toast.error('Please enter an O.P. No. and load patient details first to create a new entry.', { duration: 3000 });
-        return;
+      toast.error('Please enter an O.P. No. and load patient details first to create a new entry.', { duration: 3000 });
+      return;
     }
-    clearHistorySpecificFields(); // Clear only history-specific fields, keep patient data and vitals
-    setCurrentHistoryIndex(-1); // Indicates a new entry, not linked to existing history
+    clearHistorySpecificFields();
+    setCurrentHistoryIndex(-1);
     console.log('Setting isEditing to true in handleNew');
-    setIsEditing(true); // Allow editing for new entry
+    setIsEditing(true);
     toast.success('Ready for new history entry. Enter details and click "Save".', { duration: 3000 });
   };
 
@@ -436,8 +470,8 @@ const OPHistoryForm = () => {
       return;
     }
     if (currentHistoryIndex !== -1) {
-        toast.error('You are trying to save a new entry while an existing one is loaded. Please use "New" for new entries or "Save Changes" for edits.', { duration: 5000 });
-        return;
+      toast.error('You are trying to save a new entry while an existing one is loaded. Please use "New" for new entries or "Save Changes" for edits.', { duration: 5000 });
+      return;
     }
 
     try {
@@ -458,14 +492,12 @@ const OPHistoryForm = () => {
         spo2: formData.spo2,
         diagnosis: formData.diagnosis,
         reviewDate: formData.reviewDate,
-        timestamp: new Date(), // Use a server timestamp for accurate ordering
+        timestamp: new Date(),
       });
       toast.success('O.P. History saved successfully.', { duration: 3000 });
-      // Re-fetch history to update the list and load the newly added entry
       await fetchOPHistory(formData.opNo);
-      // clearHistorySpecificFields(); // Removed as fetchOPHistory will load the new entry
       console.log('Setting isEditing to false after handleSave');
-      setIsEditing(false); // Exit editing mode after saving
+      setIsEditing(false);
     } catch (error) {
       console.error('Error saving O.P. History:', error);
       toast.error('Failed to save O.P. History.', { duration: 3000 });
@@ -478,8 +510,8 @@ const OPHistoryForm = () => {
       return;
     }
     if (!formData.historyExamination && !formData.diagnosis && !formData.investigation) {
-        toast.error('History/Examination, Investigation, or Diagnosis cannot be empty for an edited entry.', { duration: 3000 });
-        return;
+      toast.error('History/Examination, Investigation, or Diagnosis cannot be empty for an edited entry.', { duration: 3000 });
+      return;
     }
     const recordToEdit = opHistoryRecords[currentHistoryIndex];
 
@@ -501,12 +533,12 @@ const OPHistoryForm = () => {
         spo2: formData.spo2,
         diagnosis: formData.diagnosis,
         reviewDate: formData.reviewDate,
-        timestamp: new Date(), // Update timestamp on edit if desired for re-ordering
+        timestamp: new Date(),
       });
       toast.success('O.P. History updated successfully.', { duration: 3000 });
-      await fetchOPHistory(formData.opNo); // Re-fetch to show updated data
+      await fetchOPHistory(formData.opNo);
       console.log('Setting isEditing to false after handleEditSubmit');
-      setIsEditing(false); // Exit editing mode after update
+      setIsEditing(false);
     } catch (error) {
       console.error('Error updating O.P. History:', error);
       toast.error('Failed to update O.P. History.', { duration: 3000 });
@@ -527,9 +559,12 @@ const OPHistoryForm = () => {
     try {
       await deleteDoc(doc(db, 'opHistory', recordToDelete.id));
       toast.success('O.P. History deleted successfully.', { duration: 3000 });
-      // After deletion, re-fetch and reset the form to a clean state or previous entry
       await fetchOPHistory(formData.opNo);
-      resetForm(); // Reset entire form (might re-fetch again if opNo is present)
+      if (opHistoryRecords.length > 1) {
+          loadHistoryEntry(currentHistoryIndex > 0 ? currentHistoryIndex - 1 : 0);
+      } else {
+          resetForm();
+      }
       console.log('Setting isEditing to false after handleDelete');
       setIsEditing(false);
     } catch (error) {
@@ -544,14 +579,12 @@ const OPHistoryForm = () => {
       toast.error('Please enter an O.P. No. to refresh data.', { duration: 3000 });
       return;
     }
-    toast.success('Refreshing data...', { duration: 1500 }); // Shorter duration
-    // Reset last fetched opNo to force a re-fetch even if opNo is the same
-    setLastFetchedOpNo(null);
-    fetchPatientDetailsByOpNo(formData.opNo); // This will then trigger fetchOPHistory
+    toast.success('Refreshing data...', { duration: 1500 });
+    setLastFetchedOpNo(null); // Force re-fetch
+    fetchPatientDetailsByOpNo(formData.opNo);
   };
 
   const handlePrint = () => {
-    // Basic print functionality (can be enhanced with more detailed styling/component)
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
       <html>
@@ -636,15 +669,16 @@ const OPHistoryForm = () => {
               <span class="print-label">Review Date:</span>
               <span class="print-value">${formData.reviewDate}</span>
             </div>
-            ${fileUrl ? `
+            ${patientFileUrls.length > 0 ? `
               <div class="print-row">
-                <span class="print-label">Uploaded File:</span>
-                <span class="print-value"><a href="${fileUrl}" target="_blank">${fileUrl}</a></span>
+                <span class="print-label">Uploaded Files:</span>
+                <span class="print-value">
+                  ${patientFileUrls.map((url, index) => `<a href="${url}" target="_blank">File ${index + 1}</a>`).join(', ')}
+                </span>
               </div>
             ` : ''}
           </div>
           <script>
-            // Wait for images/resources to load if any, then print
             window.onload = function() {
                 window.print();
                 window.onafterprint = function() {
@@ -660,15 +694,14 @@ const OPHistoryForm = () => {
 
   const handleCancel = () => {
     toast.info('Form operation cancelled. Resetting form.', { duration: 3000 });
-    resetForm(); // This resets everything, including opNo
+    resetForm();
     console.log('Setting isEditing to false in handleCancel');
     setIsEditing(false);
   };
 
-  // Function to handle quitting the form and navigating to the dashboard
   const handleQuit = () => {
     console.log('Quit button clicked. Navigating to dashboard.');
-    navigate('/dashboard'); // Navigate to the dashboard route
+    navigate('/dashboard');
   };
 
   console.log('Rendering OPHistoryForm, isEditing:', isEditing, 'currentHistoryIndex:', currentHistoryIndex);
@@ -704,7 +737,7 @@ const OPHistoryForm = () => {
       />
       <div className="form-container">
         <h2>O.P History & Examination Entry</h2>
-        <form className="form-grid" onSubmit={(e) => e.preventDefault()}> {/* Prevent default form submission */}
+        <form className="form-grid" onSubmit={(e) => e.preventDefault()}>
           <div className="form-row">
             <label>Date:</label>
             <input type="date" name="date" value={formData.date} onChange={handleInputChange} readOnly={!isEditing} />
@@ -716,7 +749,7 @@ const OPHistoryForm = () => {
               name="opNo"
               value={formData.opNo}
               onChange={handleInputChange}
-              readOnly={isFetching} // Prevent input changes while fetching
+              readOnly={isFetching}
               placeholder="Enter O.P. No."
             />
           </div>
@@ -738,22 +771,25 @@ const OPHistoryForm = () => {
               name="historyExamination"
               value={formData.historyExamination}
               onChange={handleInputChange}
-              rows="3"
-              readOnly={!isEditing} // This makes it non-editable when isEditing is false
-              placeholder={isEditing ? "Enter history and examination details" : "No history / examination details"}
+              readOnly={!isEditing}
+              rows="5"
+              cols="50"
             ></textarea>
+          </div>
+
+          <div className="form-row large-text-area-row">
             <label>Investigation:</label>
             <textarea
               name="investigation"
               value={formData.investigation}
               onChange={handleInputChange}
+              readOnly={!isEditing}
               rows="3"
-              readOnly={!isEditing} // This makes it non-editable when isEditing is false
-              placeholder={isEditing ? "Enter investigation details" : "No investigation details"}
+              cols="50"
             ></textarea>
           </div>
 
-          <div className="form-row vitals-row">
+          <div className="form-row">
             <label>Temp:</label>
             <input type="text" name="temp" value={formData.temp} onChange={handleInputChange} readOnly={!isEditing} />
             <label>PR:</label>
@@ -764,78 +800,82 @@ const OPHistoryForm = () => {
             <input type="text" name="spo2" value={formData.spo2} onChange={handleInputChange} readOnly={!isEditing} />
           </div>
 
-          <div className="form-row">
+          <div className="form-row large-text-area-row">
             <label>Diagnosis:</label>
-            <input
-              type="text"
+            <textarea
               name="diagnosis"
               value={formData.diagnosis}
               onChange={handleInputChange}
-              readOnly={!isEditing} // This makes it non-editable when isEditing is false
-              placeholder={isEditing ? "Enter diagnosis" : "No diagnosis"}
-            />
-            <label>Review Date:</label>
-            <input
-              type="date"
-              name="reviewDate"
-              value={formData.reviewDate}
-              onChange={handleInputChange}
-              readOnly={!isEditing} // This makes it non-editable when isEditing is false
-            />
+              readOnly={!isEditing}
+              rows="3"
+              cols="50"
+            ></textarea>
           </div>
 
-          {fileUrl && (
-            <div className="form-row">
-              <label>Uploaded File:</label>
-              <a href={fileUrl} target="_blank" rel="noopener noreferrer">View Uploaded File</a>
+          <div className="form-row">
+            <label>Review Date:</label>
+            <input type="date" name="reviewDate" value={formData.reviewDate} onChange={handleInputChange} readOnly={!isEditing} />
+          </div>
+
+          {patientFileUrls.length > 0 && (
+            <div className="form-row file-links-row">
+              <label>Patient Files:</label>
+              <div className="file-links-container">
+                {patientFileUrls.map((url, index) => (
+                  <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                    File {index + 1}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 
           <div className="form-buttons">
-            <button type="button" onClick={handleNew} disabled={!formData.opNo || !currentPatientStaticDetails || isEditing}>New</button>
+            <button type="button" onClick={handleOk} disabled={isFetching}>OK</button>
+            <button type="button" onClick={handleNew} disabled={isEditing || !formData.opNo || !currentPatientStaticDetails}>New</button>
+            <button type="button" onClick={handleEdit} disabled={isEditing || currentHistoryIndex === -1}>Edit</button>
+
             <button
               type="button"
-              onClick={handleEdit}
-              disabled={currentHistoryIndex === -1 || isEditing || opHistoryRecords.length === 0}
+              onClick={() => {
+                if (!formData.opNo) {
+                  toast.error('Please enter an O.P. No. to view history.', { duration: 3000 });
+                  return;
+                }
+                if (opHistoryRecords.length === 0) {
+                  toast.info('No history records to display for this patient.', { duration: 3000 });
+                  return;
+                }
+                setShowHistoryListModal(true);
+              }}
+              disabled={isEditing || isFetching}
             >
-              Edit
+              View History
             </button>
+
             {isEditing && currentHistoryIndex === -1 && (
-                <button type="button" onClick={handleSave} disabled={!formData.opNo || !currentPatientStaticDetails}>Save</button>
+              <button type="button" onClick={handleSave}>Save</button>
             )}
             {isEditing && currentHistoryIndex !== -1 && (
-                <button type="button" onClick={handleEditSubmit} disabled={!formData.opNo || !currentPatientStaticDetails}>Save Changes</button>
+              <button type="button" onClick={handleEditSubmit}>Save Changes</button>
             )}
-            <button type="button" onClick={handleDelete} disabled={currentHistoryIndex === -1 || opHistoryRecords.length === 0 || isEditing}>Delete</button>
-            <button type="button" onClick={() => loadHistoryEntry(currentHistoryIndex + 1)} disabled={opHistoryRecords.length === 0 || currentHistoryIndex >= opHistoryRecords.length - 1 || isEditing}>&lt; Prev History</button>
-            <button type="button" onClick={() => loadHistoryEntry(currentHistoryIndex - 1)} disabled={opHistoryRecords.length === 0 || currentHistoryIndex <= 0 || isEditing}>Next History &gt;</button>
-            <button type="button" onClick={handleOk}>OK</button>
-            <button type="button" onClick={handlePrint} disabled={opHistoryRecords.length === 0 && currentHistoryIndex === -1 && !formData.opNo}>Print</button>
+            <button type="button" onClick={handleDelete} disabled={currentHistoryIndex === -1 || isEditing}>Delete</button>
+            <button type="button" onClick={handlePrint}>Print</button>
             <button type="button" onClick={handleCancel}>Cancel</button>
-            {/* New Quit button added here */}
-            <button
-              type="button"
-              onClick={handleQuit}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#6c757d', /* A subtle grey for Quit */
-                color: 'white',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                transition: 'background-color 0.3s ease'
-              }}
-              onMouseOver={e => e.currentTarget.style.backgroundColor = '#5a6268'}
-              onMouseOut={e => e.currentTarget.style.backgroundColor = '#6c757d'}
-            >
-              Quit
-            </button>
+            <button type="button" onClick={handleQuit}>Quit</button>
           </div>
         </form>
       </div>
+
+      <HistoryListModal
+        isOpen={showHistoryListModal}
+        onClose={() => setShowHistoryListModal(false)}
+        historyRecords={opHistoryRecords}
+        onSelectHistory={(index) => {
+          loadHistoryEntry(index, opHistoryRecords);
+          setShowHistoryListModal(false);
+        }}
+      />
     </div>
   );
 };
